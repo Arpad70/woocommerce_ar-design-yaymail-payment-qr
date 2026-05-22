@@ -11,9 +11,46 @@ final class YaymailPaymentQrBlock
 {
 	private const SHORTCODE = 'ard_yaymail_payment_qr_block';
 
+	/**
+	 * @var array<int, WC_Order|null>
+	 */
+	private static array $yaymail_order_context_stack = array();
+
 	public function register(): void
 	{
 		add_shortcode( self::SHORTCODE, array( $this, 'render' ) );
+		add_action( 'yaymail_before_email_content', array( $this, 'captureYaymailOrderContext' ), 10, 2 );
+		add_action( 'yaymail_after_email_content', array( $this, 'releaseYaymailOrderContext' ), 10, 2 );
+	}
+
+	/**
+	 * @param mixed $template
+	 * @param mixed $render_data
+	 */
+	public function captureYaymailOrderContext( $template, $render_data ): void
+	{
+		unset( $template );
+
+		$order = null;
+
+		if ( is_array( $render_data ) && isset( $render_data['order'] ) && $render_data['order'] instanceof WC_Order ) {
+			$order = $render_data['order'];
+		}
+
+		self::$yaymail_order_context_stack[] = $order;
+	}
+
+	/**
+	 * @param mixed $template
+	 * @param mixed $render_data
+	 */
+	public function releaseYaymailOrderContext( $template, $render_data ): void
+	{
+		unset( $template, $render_data );
+
+		if ( ! empty( self::$yaymail_order_context_stack ) ) {
+			array_pop( self::$yaymail_order_context_stack );
+		}
 	}
 
 	/**
@@ -27,7 +64,7 @@ final class YaymailPaymentQrBlock
 				'preview_order_number' => '14092',
 				'preview_amount'       => '20.03',
 				'company'              => 'AR DESIGN s.r.o.',
-				'bank'                 => 'Všeobecná úverová banka, a.s. Poprad',
+				'bank'                 => 'Všeobecná úverová banka, a.s.',
 				'iban'                 => 'SK04 0200 0000 0038 7078 8755',
 				'bic'                  => 'SUBASKBX',
 				'currency'             => 'EUR',
@@ -46,16 +83,21 @@ final class YaymailPaymentQrBlock
 		$bic      = trim( (string) $atts['bic'] );
 		$currency = strtoupper( trim( (string) $atts['currency'] ) );
 		$qr_size  = max( 120, (int) $atts['qr_size'] );
+		$variable_symbol = '';
 
 		if ( $order instanceof WC_Order ) {
 			$order_number   = (string) $order->get_order_number();
+			$order_currency = strtoupper( (string) $order->get_currency() );
+			$currency       = '' !== $order_currency ? $order_currency : $currency;
 			$amount_numeric = number_format( (float) $order->get_total(), 2, '.', '' );
 			$amount_display = $this->formatAmountDisplay( (float) $order->get_total(), $currency );
+			$variable_symbol = $this->resolveVariableSymbol( $order_number, (string) $order->get_id() );
 		} else {
 			$order_number   = (string) $atts['preview_order_number'];
 			$preview_amount = (float) str_replace( ',', '.', (string) $atts['preview_amount'] );
 			$amount_numeric = number_format( $preview_amount, 2, '.', '' );
-			$amount_display = number_format( (float) $amount_numeric, 2, ',', ' ' ) . ' €';
+			$amount_display = $this->formatAmountDisplay( (float) $amount_numeric, $currency );
+			$variable_symbol = $this->resolveVariableSymbol( $order_number, $order_number );
 		}
 
 		$payment_payload = sprintf(
@@ -63,7 +105,7 @@ final class YaymailPaymentQrBlock
 			$iban,
 			$amount_numeric,
 			$currency,
-			preg_replace( '/[^0-9A-Za-z_-]/', '', $order_number ) ?: '',
+			$variable_symbol,
 			'Objednavka ' . $order_number
 		);
 
@@ -91,7 +133,7 @@ final class YaymailPaymentQrBlock
 					</p>
 
 					<p style="margin:0 0 8px 0; font-size:14px; line-height:1.6;">
-						<strong><?php esc_html_e( 'Variabilný symbol:', 'ar-design-yaymail-payment-qr' ); ?></strong> <?php echo esc_html( $order_number ); ?>
+						<strong><?php esc_html_e( 'Variabilný symbol:', 'ar-design-yaymail-payment-qr' ); ?></strong> <?php echo esc_html( $variable_symbol ); ?>
 					</p>
 
 					<p style="margin:0; font-size:14px; line-height:1.6;">
@@ -134,6 +176,12 @@ final class YaymailPaymentQrBlock
 			}
 		}
 
+		$yaymail_context_order = $this->getCurrentYaymailContextOrder();
+
+		if ( $yaymail_context_order instanceof WC_Order ) {
+			return $yaymail_context_order;
+		}
+
 		global $order;
 
 		if ( $order instanceof WC_Order ) {
@@ -152,6 +200,32 @@ final class YaymailPaymentQrBlock
 		}
 
 		return null;
+	}
+
+	private function getCurrentYaymailContextOrder(): ?WC_Order
+	{
+		for ( $index = count( self::$yaymail_order_context_stack ) - 1; $index >= 0; $index-- ) {
+			$order = self::$yaymail_order_context_stack[ $index ] ?? null;
+
+			if ( $order instanceof WC_Order ) {
+				return $order;
+			}
+		}
+
+		return null;
+	}
+
+	private function resolveVariableSymbol( string $preferred_value, string $fallback_value ): string
+	{
+		$preferred_digits = preg_replace( '/\D+/', '', $preferred_value ) ?: '';
+
+		if ( '' !== $preferred_digits ) {
+			return $preferred_digits;
+		}
+
+		$fallback_digits = preg_replace( '/\D+/', '', $fallback_value ) ?: '';
+
+		return $fallback_digits;
 	}
 
 	private function formatAmountDisplay( float $amount, string $currency ): string
