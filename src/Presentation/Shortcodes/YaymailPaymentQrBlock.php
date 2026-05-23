@@ -4,17 +4,29 @@ declare(strict_types=1);
 
 namespace ArDesign\YaymailPaymentQr\Presentation\Shortcodes;
 
+defined( 'ABSPATH' ) || exit;
+
+use ArDesign\YaymailPaymentQr\Infrastructure\Qr\QrCodeRenderer;
 use WC_Order;
 use WP_Post;
+use WP_HTTP_Response;
+use WP_REST_Request;
+use WP_REST_Response;
+use WP_REST_Server;
 
 final class YaymailPaymentQrBlock
 {
 	private const SHORTCODE = 'ard_yaymail_payment_qr_block';
+	private const REST_NAMESPACE = 'ard-yaymail-payment-qr/v1';
+	private const REST_ROUTE = '/qr';
+	private const DEFAULT_QR_SIZE = 180;
 
 	/**
 	 * @var array<int, WC_Order|null>
 	 */
 	private static array $yaymail_order_context_stack = array();
+
+	private ?QrCodeRenderer $qr_code_renderer = null;
 
 	public function register(): void
 	{
@@ -38,6 +50,19 @@ final class YaymailPaymentQrBlock
 		}
 
 		self::$yaymail_order_context_stack[] = $order;
+	}
+
+	public function registerRestRoutes(): void
+	{
+		register_rest_route(
+			self::REST_NAMESPACE,
+			self::REST_ROUTE,
+			array(
+				'methods' => 'GET',
+				'callback' => array( $this, 'renderQrCodeResponse' ),
+				'permission_callback' => '__return_true',
+			)
+		);
 	}
 
 	/**
@@ -109,7 +134,7 @@ final class YaymailPaymentQrBlock
 			'Objednavka ' . $order_number
 		);
 
-		$qr_url = 'https://api.qrserver.com/v1/create-qr-code/?size=' . rawurlencode( $qr_size . 'x' . $qr_size ) . '&data=' . rawurlencode( $payment_payload );
+		$qr_url = $this->buildSignedQrCodeUrl( $payment_payload, $qr_size );
 
 		ob_start();
 		?>
@@ -158,6 +183,62 @@ final class YaymailPaymentQrBlock
 		<?php
 
 		return (string) ob_get_clean();
+	}
+
+	public function renderQrCodeResponse( WP_REST_Request $request ): WP_REST_Response
+	{
+		$encoded_payload = (string) $request->get_param( 'data' );
+		$size            = $this->normalizeQrSize( $request->get_param( 'size' ) );
+		$signature       = (string) $request->get_param( 'sig' );
+
+		if ( '' === $encoded_payload || '' === $signature || ! $this->isValidSignature( $encoded_payload, $size, $signature ) ) {
+			return $this->buildErrorResponse( 403 );
+		}
+
+		$payload = $this->decodePayload( $encoded_payload );
+
+		if ( '' === $payload ) {
+			return $this->buildErrorResponse( 400 );
+		}
+
+		try {
+			$image = $this->getQrCodeRenderer()->renderPng( $payload, $size );
+		} catch ( \Throwable $throwable ) {
+			unset( $throwable );
+
+			return $this->buildErrorResponse( 500 );
+		}
+
+		$response = new WP_REST_Response( $image, 200 );
+		$response->header( 'Content-Type', 'image/png' );
+		$response->header( 'Content-Length', (string) strlen( $image ) );
+		$response->header( 'Cache-Control', 'public, max-age=' . WEEK_IN_SECONDS . ', immutable' );
+		$response->header( 'X-Robots-Tag', 'noindex, nofollow' );
+
+		return $response;
+	}
+
+	public function serveQrCodeResponse( bool $served, WP_HTTP_Response $result, WP_REST_Request $request, WP_REST_Server $server ): bool
+	{
+		unset( $server );
+
+		if ( $this->getRestRoutePath() !== $request->get_route() ) {
+			return $served;
+		}
+
+		status_header( $result->get_status() );
+
+		foreach ( $result->get_headers() as $header_name => $header_value ) {
+			header( sprintf( '%s: %s', $header_name, $header_value ), true );
+		}
+
+		$data = $result->get_data();
+
+		if ( is_string( $data ) && '' !== $data ) {
+			echo $data; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Binary PNG output.
+		}
+
+		return true;
 	}
 
 	/**
@@ -213,6 +294,80 @@ final class YaymailPaymentQrBlock
 		}
 
 		return null;
+	}
+
+	private function buildSignedQrCodeUrl( string $payload, int $size ): string
+	{
+		$encoded_payload = $this->encodePayload( $payload );
+		$size            = $this->normalizeQrSize( $size );
+		$signature       = $this->buildSignature( $encoded_payload, $size );
+
+		return add_query_arg(
+			array(
+				'data' => $encoded_payload,
+				'size' => $size,
+				'sig'  => $signature,
+			),
+			rest_url( ltrim( $this->getRestRoutePath(), '/' ) )
+		);
+	}
+
+	private function getRestRoutePath(): string
+	{
+		return '/' . trim( self::REST_NAMESPACE . self::REST_ROUTE, '/' );
+	}
+
+	private function getQrCodeRenderer(): QrCodeRenderer
+	{
+		if ( null === $this->qr_code_renderer ) {
+			$this->qr_code_renderer = new QrCodeRenderer();
+		}
+
+		return $this->qr_code_renderer;
+	}
+
+	private function normalizeQrSize( $size ): int
+	{
+		return max( 120, min( 512, (int) $size ?: self::DEFAULT_QR_SIZE ) );
+	}
+
+	private function encodePayload( string $payload ): string
+	{
+		return rtrim( strtr( base64_encode( $payload ), '+/', '-_' ), '=' );
+	}
+
+	private function decodePayload( string $payload ): string
+	{
+		$normalized = strtr( $payload, '-_', '+/' );
+		$padding    = strlen( $normalized ) % 4;
+
+		if ( $padding > 0 ) {
+			$normalized .= str_repeat( '=', 4 - $padding );
+		}
+
+		$decoded = base64_decode( $normalized, true );
+
+		return false === $decoded ? '' : $decoded;
+	}
+
+	private function buildSignature( string $encoded_payload, int $size ): string
+	{
+		$secret = wp_salt( 'auth' ) . '|' . ARD_YAYMAIL_PAYMENT_QR_VERSION;
+
+		return hash_hmac( 'sha256', $encoded_payload . '|' . $size, $secret );
+	}
+
+	private function isValidSignature( string $encoded_payload, int $size, string $signature ): bool
+	{
+		return hash_equals( $this->buildSignature( $encoded_payload, $size ), strtolower( $signature ) );
+	}
+
+	private function buildErrorResponse( int $status ): WP_REST_Response
+	{
+		$response = new WP_REST_Response( '', $status );
+		$response->header( 'Cache-Control', 'no-store, max-age=0' );
+
+		return $response;
 	}
 
 	private function resolveVariableSymbol( string $preferred_value, string $fallback_value ): string

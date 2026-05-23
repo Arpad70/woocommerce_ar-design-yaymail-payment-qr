@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace ArDesign\YaymailPaymentQr\Support;
 
+defined( 'ABSPATH' ) || exit;
+
 final class Autoloader
 {
 	private const NAMESPACE_PREFIX = 'ArDesign\\YaymailPaymentQr\\';

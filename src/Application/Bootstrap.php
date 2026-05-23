@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace ArDesign\YaymailPaymentQr\Application;
 
+defined( 'ABSPATH' ) || exit;
+
 use ArDesign\YaymailPaymentQr\Presentation\Shortcodes\YaymailPaymentQrBlock;
 use ArDesign\YaymailPaymentQr\Support\Updates\GitHubUpdater;
 use ArDesign\YaymailPaymentQr\Support\Updates\RollbackManager;
@@ -45,6 +47,8 @@ final class Bootstrap
 	public function run(): void
 	{
 		add_action( 'init', array( $this, 'loadTextDomain' ) );
+		add_action( 'rest_api_init', array( $this->shortcode, 'registerRestRoutes' ) );
+		add_filter( 'rest_pre_serve_request', array( $this->shortcode, 'serveQrCodeResponse' ), 10, 4 );
 		add_action( 'plugins_loaded', array( $this, 'bootstrapRuntime' ), 20 );
 	}
 

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace ArDesign\YaymailPaymentQr\Support\Updates;
 
+defined( 'ABSPATH' ) || exit;
+
 final class RollbackManager
 {
 	private const BACKUP_DIR = 'ard-yaymail-payment-qr-backups';

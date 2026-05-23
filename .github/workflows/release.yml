@@ -2,8 +2,8 @@ name: Release YayMail Payment QR
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -25,41 +25,54 @@ jobs:
 
       - name: Verify Build
         run: |
-          find . -name '*.php' -print0 | xargs -0 -n1 php -l
-          VERSION="$(tr -d '\r\n' < VERSION)"
-          PLUGIN_VERSION="$(sed -n "s/^ \* Version: //p" ar-design-yaymail-payment-qr.php | tr -d '\r\n')"
-          if [ "$VERSION" != "$PLUGIN_VERSION" ]; then
-            echo "VERSION file ($VERSION) does not match plugin header ($PLUGIN_VERSION)." >&2
-            exit 1
-          fi
+          find . -path './vendor' -prune -o -path './build' -prune -o -name '*.php' -print0 | xargs -0 -n1 php -l
+          php scripts/verify-version-consistency.php
 
       - name: Resolve Version
         id: version
         run: |
           VERSION="$(tr -d '\r\n' < VERSION)"
-          TAG="v$VERSION"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
 
-          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref_name }}" != "$TAG" ]; then
-            echo "Git tag does not match VERSION file. Expected $TAG but got ${{ github.ref_name }}." >&2
-            exit 1
+      - name: Check Release Eligibility
+        id: eligibility
+        run: |
+          BEFORE_SHA="${{ github.event.before }}"
+          TARGET_TAG="${{ steps.version.outputs.tag }}"
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if git ls-remote --tags origin "$TARGET_TAG" | grep -q "$TARGET_TAG"; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if git diff --name-only "$BEFORE_SHA" "${{ github.sha }}" | grep -q '^VERSION$'; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Build Release Zip
+        if: steps.eligibility.outputs.publish == 'true'
         run: |
-          rm -rf /tmp/ar-design-yaymail-payment-qr-release
-          mkdir -p /tmp/ar-design-yaymail-payment-qr-release/ar-design-yaymail-payment-qr
-          rsync -a ./ /tmp/ar-design-yaymail-payment-qr-release/ar-design-yaymail-payment-qr/ --exclude='.git' --exclude='.github' --exclude='.DS_Store'
-          cd /tmp/ar-design-yaymail-payment-qr-release
-          zip -r ar-design-yaymail-payment-qr.zip ar-design-yaymail-payment-qr
+          bash scripts/build-plugin.sh
 
       - name: Publish GitHub Release
+        if: steps.eligibility.outputs.publish == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
           name: AR Design YayMail Payment QR ${{ steps.version.outputs.tag }}
           generate_release_notes: true
-          target_commitish: ${{ github.sha }}
           files: |
-            /tmp/ar-design-yaymail-payment-qr-release/ar-design-yaymail-payment-qr.zip
+            build/ar-design-yaymail-payment-qr-${{ steps.version.outputs.version }}.zip

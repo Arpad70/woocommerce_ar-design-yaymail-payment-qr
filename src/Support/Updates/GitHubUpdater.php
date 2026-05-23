@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace ArDesign\YaymailPaymentQr\Support\Updates;
 
+defined( 'ABSPATH' ) || exit;
+
 final class GitHubUpdater
 {
 	private const CACHE_TTL = 900;

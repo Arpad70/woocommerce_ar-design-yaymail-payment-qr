@@ -1,0 +1,12 @@
+{
+    "name": "ardesign/ar-design-yaymail-payment-qr",
+    "description": "Server-side QR generation for YayMail WooCommerce payment instructions.",
+    "type": "wordpress-plugin",
+    "require": {
+        "endroid/qr-code": "^4.8"
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "sort-packages": true
+    }
+}
