@@ -326,7 +326,7 @@ final class YaymailPaymentQrBlock
 		return $this->qr_code_renderer;
 	}
 
-	private function normalizeQrSize( $size ): int
+	private function normalizeQrSize( mixed $size ): int
 	{
 		return max( 120, min( 512, (int) $size ?: self::DEFAULT_QR_SIZE ) );
 	}
