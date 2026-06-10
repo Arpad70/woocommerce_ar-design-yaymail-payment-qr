@@ -94,12 +94,15 @@ final class YaymailPaymentQrBlock
 				'bic'                  => 'SUBASKBX',
 				'currency'             => 'EUR',
 				'qr_size'              => '180',
+				'context'              => 'yaymail',
 			),
 			is_array( $atts ) ? $atts : array(),
 			self::SHORTCODE
 		);
 
 		$order = $this->resolveOrder( $atts );
+		$context = $this->normalizeContext( (string) $atts['context'] );
+		$is_invoice_context = 'invoice' === $context;
 
 		$company  = trim( (string) $atts['company'] );
 		$bank     = trim( (string) $atts['bank'] );
@@ -107,7 +110,9 @@ final class YaymailPaymentQrBlock
 		$iban     = preg_replace( '/\s+/', '', $iban_raw ) ?: '';
 		$bic      = trim( (string) $atts['bic'] );
 		$currency = strtoupper( trim( (string) $atts['currency'] ) );
-		$qr_size  = max( 120, (int) $atts['qr_size'] );
+		$qr_size  = $is_invoice_context
+			? min( 120, max( 120, (int) $atts['qr_size'] ) )
+			: min( 140, max( 120, (int) $atts['qr_size'] ) );
 		$variable_symbol = '';
 
 		if ( $order instanceof WC_Order ) {
@@ -134,48 +139,68 @@ final class YaymailPaymentQrBlock
 			'Objednavka ' . $order_number
 		);
 
-		$qr_url = $this->buildSignedQrCodeUrl( $payment_payload, $qr_size );
+		$qr_image_src = '' !== $iban ? $this->buildQrImageSource( $payment_payload, $qr_size, $context ) : '';
+		$wrapper_style = $is_invoice_context
+			? 'width:100%; border-collapse:collapse; margin:0;'
+			: 'width:100%; border-collapse:collapse; margin:0;';
+		$left_column_width = $is_invoice_context ? '32%' : '38%';
+		$right_column_width = $is_invoice_context ? '68%' : '62%';
+		$left_padding = $is_invoice_context ? '10px' : '14px';
+		$heading_style = $is_invoice_context
+			? 'margin:0 0 8px 0; font-size:13px; line-height:1.3; font-weight:700;'
+			: 'margin:0 0 12px 0; font-size:18px; line-height:1.4; font-weight:700;';
+		$row_style = $is_invoice_context
+			? 'margin:0 0 5px 0; font-size:11px; line-height:1.35;'
+			: 'margin:0 0 8px 0; font-size:14px; line-height:1.6;';
+		$last_row_style = $is_invoice_context
+			? 'margin:0; font-size:11px; line-height:1.35;'
+			: 'margin:0; font-size:14px; line-height:1.6;';
+		$caption_style = $is_invoice_context
+			? 'margin:6px 0 0 0; font-size:10px; color:#666666; line-height:1.25;'
+			: 'margin:8px 0 0 0; font-size:12px; color:#666666; line-height:1.35;';
 
 		ob_start();
 		?>
-		<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%; border-collapse:collapse;">
+		<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" align="left" style="<?php echo esc_attr( $wrapper_style ); ?>">
 			<tr>
-				<td valign="top" width="60%" style="width:60%; padding:0 20px 0 0;">
-					<h3 style="margin:0 0 12px 0; font-size:18px; line-height:1.4; font-weight:700;">
+				<td valign="top" width="<?php echo esc_attr( $left_column_width ); ?>" style="width:<?php echo esc_attr( $left_column_width ); ?>; padding:0 <?php echo esc_attr( $left_padding ); ?> 0 0; text-align:left;">
+					<?php if ( '' !== $qr_image_src ) : ?>
+						<img
+							src="<?php echo 'invoice' === $context ? esc_attr( $qr_image_src ) : esc_url( $qr_image_src ); ?>"
+							alt="<?php esc_attr_e( 'QR kód pre platbu', 'ar-design-yaymail-payment-qr' ); ?>"
+							width="<?php echo (int) $qr_size; ?>"
+							height="<?php echo (int) $qr_size; ?>"
+							style="display:block; width:<?php echo (int) $qr_size; ?>px; max-width:100%; height:auto; border:0; margin:0;"
+						/>
+						<p style="<?php echo esc_attr( $caption_style ); ?>">
+							<?php esc_html_e( 'Naskenujte QR kód vo svojej bankovej aplikácii.', 'ar-design-yaymail-payment-qr' ); ?>
+						</p>
+					<?php endif; ?>
+				</td>
+
+				<td valign="top" width="<?php echo esc_attr( $right_column_width ); ?>" style="width:<?php echo esc_attr( $right_column_width ); ?>;">
+					<h3 style="<?php echo esc_attr( $heading_style ); ?>">
 						<?php echo esc_html( $company ); ?>
 					</h3>
 
-					<p style="margin:0 0 8px 0; font-size:14px; line-height:1.6;">
+					<p style="<?php echo esc_attr( $row_style ); ?>">
 						<strong><?php esc_html_e( 'Banka:', 'ar-design-yaymail-payment-qr' ); ?></strong> <?php echo esc_html( $bank ); ?>
 					</p>
 
-					<p style="margin:0 0 8px 0; font-size:14px; line-height:1.6;">
+					<p style="<?php echo esc_attr( $row_style ); ?>">
 						<strong><?php esc_html_e( 'IBAN:', 'ar-design-yaymail-payment-qr' ); ?></strong> <?php echo esc_html( $iban_raw ); ?>
 					</p>
 
-					<p style="margin:0 0 8px 0; font-size:14px; line-height:1.6;">
+					<p style="<?php echo esc_attr( $row_style ); ?>">
 						<strong><?php esc_html_e( 'BIC:', 'ar-design-yaymail-payment-qr' ); ?></strong> <?php echo esc_html( $bic ); ?>
 					</p>
 
-					<p style="margin:0 0 8px 0; font-size:14px; line-height:1.6;">
+					<p style="<?php echo esc_attr( $row_style ); ?>">
 						<strong><?php esc_html_e( 'Variabilný symbol:', 'ar-design-yaymail-payment-qr' ); ?></strong> <?php echo esc_html( $variable_symbol ); ?>
 					</p>
 
-					<p style="margin:0; font-size:14px; line-height:1.6;">
+					<p style="<?php echo esc_attr( $last_row_style ); ?>">
 						<strong><?php esc_html_e( 'Suma:', 'ar-design-yaymail-payment-qr' ); ?></strong> <?php echo esc_html( $amount_display ); ?>
-					</p>
-				</td>
-
-				<td valign="top" width="40%" align="right" style="width:40%; text-align:right;">
-					<img
-						src="<?php echo esc_url( $qr_url ); ?>"
-						alt="<?php esc_attr_e( 'QR kód pre platbu', 'ar-design-yaymail-payment-qr' ); ?>"
-						width="<?php echo (int) $qr_size; ?>"
-						height="<?php echo (int) $qr_size; ?>"
-						style="display:block; width:<?php echo (int) $qr_size; ?>px; max-width:<?php echo (int) $qr_size; ?>px; height:auto; border:0; margin-left:auto;"
-					/>
-					<p style="margin:8px 0 0 0; font-size:12px; color:#666666; line-height:1.4;">
-						<?php esc_html_e( 'Naskenujte QR kód vo svojej bankovej aplikácii.', 'ar-design-yaymail-payment-qr' ); ?>
 					</p>
 				</td>
 			</tr>
@@ -183,6 +208,13 @@ final class YaymailPaymentQrBlock
 		<?php
 
 		return (string) ob_get_clean();
+	}
+
+	private function normalizeContext( string $context ): string
+	{
+		$context = strtolower( trim( $context ) );
+
+		return in_array( $context, array( 'invoice', 'yaymail' ), true ) ? $context : 'yaymail';
 	}
 
 	public function renderQrCodeResponse( WP_REST_Request $request ): WP_REST_Response
@@ -317,6 +349,15 @@ final class YaymailPaymentQrBlock
 		return '/' . trim( self::REST_NAMESPACE . self::REST_ROUTE, '/' );
 	}
 
+	private function buildQrImageSource( string $payload, int $size, string $context ): string
+	{
+		if ( 'invoice' === $context ) {
+			return $this->buildInlineQrCodeDataUri( $payload, $size );
+		}
+
+		return $this->buildSignedQrCodeUrl( $payload, $size );
+	}
+
 	private function getQrCodeRenderer(): QrCodeRenderer
 	{
 		if ( null === $this->qr_code_renderer ) {
@@ -329,6 +370,19 @@ final class YaymailPaymentQrBlock
 	private function normalizeQrSize( mixed $size ): int
 	{
 		return max( 120, min( 512, (int) $size ?: self::DEFAULT_QR_SIZE ) );
+	}
+
+	private function buildInlineQrCodeDataUri( string $payload, int $size ): string
+	{
+		try {
+			$image = $this->getQrCodeRenderer()->renderPng( $payload, $this->normalizeQrSize( $size ) );
+		} catch ( \Throwable $throwable ) {
+			unset( $throwable );
+
+			return '';
+		}
+
+		return 'data:image/png;base64,' . base64_encode( $image );
 	}
 
 	private function encodePayload( string $payload ): string

@@ -72,6 +72,11 @@ final class Bootstrap
 		}
 	}
 
+	public function getShortcode(): YaymailPaymentQrBlock
+	{
+		return $this->shortcode;
+	}
+
 	public static function activate(): void
 	{
 		update_option( 'ard_yaymail_payment_qr_version', ARD_YAYMAIL_PAYMENT_QR_VERSION );

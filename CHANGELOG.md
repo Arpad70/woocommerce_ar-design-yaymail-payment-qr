@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.4 - 2026-06-10
+- QR blok a renderovanie platobných údajov sú zosúladené s aktualizovaným fakturačným flow (variabilný symbol podľa čísla objednávky).
+- release metadata zosúladené pre automatický GitHub release pipeline.
+
 ## 0.1.1 - 2026-05-22
 - odstránené `Poprad` z názvu banky v QR bloku
 - shortcode teraz pri renderovaní v YayMail načíta reálnu objednávku z e-mailového kontextu namiesto preview fallbacku

@@ -3,7 +3,7 @@
  * Plugin Name: Ar Design YayMail Payment QR
  * Plugin URI: https://github.com/Arpad70/woocommerce_ar-design-yaymail-payment-qr
  * Description: Pridáva shortcode pre YayMail blok s platobnými údajmi a dynamickým QR kódom pre WooCommerce objednávky.
- * Version: 0.1.3
+ * Version: 0.1.4
  * Author: Arpád Horák
  * Author URI: https://arpad-horak.cz
  * Developer: Arpád Horák
@@ -23,7 +23,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ARD_YAYMAIL_PAYMENT_QR_VERSION', '0.1.3' );
+define( 'ARD_YAYMAIL_PAYMENT_QR_VERSION', '0.1.4' );
 define( 'ARD_YAYMAIL_PAYMENT_QR_FILE', __FILE__ );
 define( 'ARD_YAYMAIL_PAYMENT_QR_BASENAME', plugin_basename( __FILE__ ) );
 define( 'ARD_YAYMAIL_PAYMENT_QR_PATH', plugin_dir_path( __FILE__ ) );
@@ -43,6 +43,19 @@ add_action(
 require_once ARD_YAYMAIL_PAYMENT_QR_PATH . 'bootstrap/autoload.php';
 
 ArDesign\YaymailPaymentQr\Support\Autoloader::register();
+
+if ( ! function_exists( 'ard_yaymail_payment_qr_render_block' ) ) {
+	/**
+	 * Render shared payment QR block for YayMail or invoice templates.
+	 *
+	 * @param array<string, string> $atts Block attributes.
+	 */
+	function ard_yaymail_payment_qr_render_block( array $atts = array() ): string {
+		$renderer = new ArDesign\YaymailPaymentQr\Presentation\Shortcodes\YaymailPaymentQrBlock();
+
+		return $renderer->render( $atts );
+	}
+}
 
 register_activation_hook( ARD_YAYMAIL_PAYMENT_QR_FILE, array( 'ArDesign\\YaymailPaymentQr\\Application\\Bootstrap', 'activate' ) );
 register_deactivation_hook( ARD_YAYMAIL_PAYMENT_QR_FILE, array( 'ArDesign\\YaymailPaymentQr\\Application\\Bootstrap', 'deactivate' ) );
