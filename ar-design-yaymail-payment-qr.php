@@ -3,12 +3,13 @@
  * Plugin Name: Ar Design YayMail Payment QR
  * Plugin URI: https://github.com/Arpad70/woocommerce_ar-design-yaymail-payment-qr
  * Description: Pridáva shortcode pre YayMail blok s platobnými údajmi a dynamickým QR kódom pre WooCommerce objednávky.
- * Version: 0.1.5
+ * Version: 0.1.6
  * Author: Arpád Horák
  * Author URI: https://arpad-horak.cz
  * Developer: Arpád Horák
  * Developer URI: https://arpad-horak.cz
  * Update URI: https://github.com/Arpad70/woocommerce_ar-design-yaymail-payment-qr
+ * Requires Plugins: ar-design-shared-support
  * Requires at least: 6.7
  * Requires PHP: 8.0
  * Text Domain: ar-design-yaymail-payment-qr
@@ -23,7 +24,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ARD_YAYMAIL_PAYMENT_QR_VERSION', '0.1.5' );
+define( 'ARD_YAYMAIL_PAYMENT_QR_VERSION', '0.1.6' );
 define( 'ARD_YAYMAIL_PAYMENT_QR_FILE', __FILE__ );
 define( 'ARD_YAYMAIL_PAYMENT_QR_BASENAME', plugin_basename( __FILE__ ) );
 define( 'ARD_YAYMAIL_PAYMENT_QR_PATH', plugin_dir_path( __FILE__ ) );
